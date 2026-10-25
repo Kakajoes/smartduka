@@ -1,250 +1,187 @@
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  font-family: Arial, sans-serif;
-  background: #081a15;
-  color: #ebfff6;
-}
-button, input, select {
-  font: inherit;
-}
-button {
-  cursor: pointer;
-}
-.app-shell {
-  display: grid;
-  grid-template-columns: 240px 1fr;
-  min-height: 100vh;
-}
-.sidebar {
-  background: #0d201a;
-  padding: 20px 16px;
-  border-right: 1px solid #1f4539;
-}
-.brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 30px;
-}
-.logo {
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #3dd68c, #a7f7d5);
-  color: #032517;
-  font-weight: 700;
-}
-.brand h1 { margin: 0; font-size: 1.1rem; }
-.brand small { color: #9bc8b2; }
-.nav {
-  display: block;
-  width: 100%;
-  text-align: left;
-  background: transparent;
-  border: 1px solid transparent;
-  color: #dffcf0;
-  padding: 10px 12px;
-  border-radius: 10px;
-  margin: 6px 0;
-  text-decoration: none;
-}
-.nav.active, .nav:hover {
-  background: #143d2d;
-  border-color: #2f6d56;
-}
-.status-card {
-  margin-top: 20px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: #0f261d;
-  border: 1px solid #1e4437;
-  padding: 12px;
-  border-radius: 12px;
-}
-.dot {
-  width: 10px;
-  height: 10px;
-  display: inline-block;
-  border-radius: 50%;
-}
-.dot.green { background: #35d27e; }
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://fonts.gstatic.com; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com data:; connect-src 'self' https://api.safaricom.co.ke https://sandbox.safaricom.co.ke; object-src 'none'; base-uri 'self'; frame-ancestors 'none';"/>
+  <title>Smart Duka POS</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">D</div>
+        <div>
+          <h1>Smart Duka</h1>
+          <small>Commercial POS</small>
+        </div>
+      </div>
+      <nav>
+        <button class="nav active" data-page="pos">POS</button>
+        <button class="nav" data-page="products">Products</button>
+        <button class="nav" data-page="analytics">Intelligence</button>
+        <button class="nav" data-page="settings">Settings</button>
+        <a class="nav" href="/admin.html">Admin</a>
+        <a class="nav" href="/shop.html?shop=smartduka">Shop</a>
+      </nav>
+      <div class="status-card">
+        <span class="dot green"></span>
+        <div>
+          <strong id="currentUser">Admin</strong>
+          <small id="systemName">Smart Duka</small>
+        </div>
+      </div>
+    </aside>
 
-.main-panel {
-  padding: 24px;
-}
-.topbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-}
-.actions { display: flex; gap: 10px; }
-.primary, .secondary, .ghost {
-  border: none;
-  border-radius: 10px;
-  padding: 10px 14px;
-  color: #06281c;
-  font-weight: 700;
-}
-.primary { background: linear-gradient(135deg, #45d88d, #9ff6c7); }
-.secondary { background: #18493d; color: #dffcf0; }
-.ghost { background: transparent; border: 1px solid #274d41; color: #e8fff4; }
-.large { width: 100%; margin-top: 12px; }
-.page { display: none; }
-.page.active { display: block; }
-.panel-grid {
-  display: grid;
-  grid-template-columns: 1.35fr 0.65fr;
-  gap: 18px;
-}
-.panel {
-  background: #0d2018;
-  border: 1px solid #1e4336;
-  border-radius: 16px;
-  padding: 18px;
-  margin-bottom: 18px;
-}
-.wide { min-height: 480px; }
-.toolbar {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 12px;
-}
-.toolbar.stack { display: grid; }
-input, select {
-  width: 100%;
-  background: #081b15;
-  color: #ebfff6;
-  border: 1px solid #224d40;
-  border-radius: 10px;
-  padding: 12px 14px;
-  outline: none;
-}
-.product-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 12px;
-}
-.product-card {
-  background: #112c23;
-  border: 1px solid #234e3f;
-  border-radius: 12px;
-  padding: 12px;
-}
-.product-card h4 { margin: 8px 0 6px; font-size: 1rem; }
-.product-card .meta { color: #9ed0b7; font-size: 0.8rem; }
-.product-card .price { display: block; font-weight: 700; font-size: 1.1rem; margin-top: 10px; }
-.product-card button {
-  width: 100%;
-  margin-top: 10px;
-}
-.cart-list { display: grid; gap: 10px; max-height: 360px; overflow: auto; }
-.cart-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #0f251d;
-  border: 1px solid #214f3d;
-  border-radius: 10px;
-  padding: 10px 12px;
-}
-.cart-item strong { display: block; }
-.totals { margin-top: 18px; }
-.totals > div { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.total-row { font-size: 1.2rem; }
-.hidden { display: none !important; }
-.muted { color: #9bc8b2; }
-.card-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  margin-bottom: 18px;
-}
-.mini-card {
-  background: #0d2018;
-  border: 1px solid #1f4839;
-  border-radius: 12px;
-  padding: 18px;
-}
-.label { color: #9fcab6; display: block; margin-bottom: 8px; }
-.mini-card strong { font-size: 1.7rem; }
-.login-box {
-  max-width: 420px;
-  margin: 120px auto;
-  background: #0d2018;
-  border: 1px solid #214f3d;
-  border-radius: 16px;
-  padding: 24px;
-}
-.login-box h1 { margin-top: 0; }
-.form-group { margin-bottom: 16px; }
-.shop-body, .admin-body { background: #071711; }
-.shop-header {
-  padding: 18px 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px solid #20463c;
-}
-.shop-search { padding: 16px 20px; }
-.shop-products {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 16px;
-  padding: 0 20px 30px;
-}
-.product-thumb {
-  height: 120px;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #123d2f, #0b1f1a);
-  display: grid;
-  place-items: center;
-  font-size: 2.2rem;
-}
-.product-item {
-  background: #0d2018;
-  border: 1px solid #1e4539;
-  border-radius: 14px;
-  padding: 12px;
-}
-.product-item button {
-  width: 100%;
-  margin-top: 10px;
-}
-.drawer {
-  position: fixed;
-  top: 0;
-  right: 0;
-  width: min(420px, 90vw);
-  height: 100vh;
-  background: #091b16;
-  border-left: 1px solid #244e3d;
-  padding: 18px;
-  z-index: 100;
-}
-.drawer-head, .drawer-footer { display: grid; gap: 10px; }
-.drawer-head { grid-template-columns: 1fr auto; align-items: center; }
-.drawer-footer { margin-top: 12px; }
-.total-line { display: flex; justify-content: space-between; font-size: 1.2rem; }
-#productTable table { width: 100%; border-collapse: collapse; }
-#productTable th, #productTable td { text-align: left; padding: 10px; border-bottom: 1px solid #1e4336; }
-#frequentProducts, #slowProducts { display: grid; gap: 8px; }
-.list-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #0d2018;
-  border: 1px solid #214d3c;
-  border-radius: 10px;
-  padding: 10px 12px;
-}
-@media (max-width: 900px) {
-  .app-shell { grid-template-columns: 1fr; }
-  .panel-grid { grid-template-columns: 1fr; }
-  .card-grid { grid-template-columns: 1fr; }
-}
+    <main class="main-panel">
+      <header class="topbar">
+        <h2 id="pageTitle">Point of Sale</h2>
+        <div class="actions">
+          <button id="logoutBtn" class="ghost">Logout</button>
+          <button id="syncBtn" class="primary">Sync</button>
+        </div>
+      </header>
+
+      <section id="page-pos" class="page active">
+        <div class="panel-grid">
+          <div class="panel wide">
+            <div class="toolbar">
+              <input id="barcodeInput" placeholder="Scan barcode or type SKU" />
+              <button id="scanBtn" class="primary">Add</button>
+            </div>
+            <div id="barcodeStatus" class="muted"></div>
+
+            <div class="product-toolbar">
+              <input id="productSearch" placeholder="Search product" />
+            </div>
+
+            <div id="productList" class="product-grid"></div>
+          </div>
+
+          <div class="panel">
+            <h3>Current Sale</h3>
+            <div id="cartList" class="cart-list"></div>
+            <div class="totals">
+              <div><span>Subtotal</span><strong id="subtotal">KSh 0</strong></div>
+              <div><span>Discount</span><input id="discount" type="number" value="0" /></div>
+              <div class="total-row"><span>Total</span><strong id="grandTotal">KSh 0</strong></div>
+            </div>
+            <label>Payment method</label>
+            <select id="paymentMethod">
+              <option value="CASH">Cash</option>
+              <option value="MPESA">M-Pesa</option>
+              <option value="CARD">Card</option>
+            </select>
+            <div id="mpesaBox" class="hidden">
+              <label>Customer phone</label>
+              <input id="customerPhone" placeholder="07XXXXXXXX" />
+              <button id="mpesaPromptBtn" class="secondary">Send M-Pesa prompt</button>
+            </div>
+            <button id="checkoutBtn" class="primary large">Complete Sale</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-products" class="page">
+        <div class="panel">
+          <h3>Products</h3>
+          <div class="toolbar">
+            <input id="productFormName" placeholder="Product name" />
+            <input id="productFormSku" placeholder="SKU" />
+            <input id="productFormBarcode" placeholder="Barcode" />
+          </div>
+          <div class="toolbar">
+            <input id="productFormCategory" placeholder="Category" value="General" />
+            <input id="productFormCost" type="number" placeholder="Cost" />
+            <input id="productFormPrice" type="number" placeholder="Price" />
+            <input id="productFormStock" type="number" placeholder="Stock" />
+          </div>
+          <div class="toolbar">
+            <input id="productFormUnit" list="unitOptions" placeholder="Unit" value="piece" />
+            <datalist id="unitOptions">
+              <option value="piece"></option>
+              <option value="packet"></option>
+              <option value="box"></option>
+              <option value="carton"></option>
+              <option value="crate"></option>
+              <option value="tray"></option>
+              <option value="bottle"></option>
+              <option value="sachet"></option>
+              <option value="bag"></option>
+              <option value="bale"></option>
+              <option value="pair"></option>
+              <option value="set"></option>
+              <option value="roll"></option>
+              <option value="metre"></option>
+              <option value="g"></option>
+              <option value="kg"></option>
+              <option value="ml"></option>
+              <option value="L"></option>
+              <option value="hour"></option>
+            </datalist>
+            <input id="productFormPackSize" type="number" min="1" step="0.01" value="1" placeholder="Pack size" />
+            <input id="productFormReorder" type="number" placeholder="Reorder" value="10" />
+          </div>
+          <div class="toolbar">
+            <button id="saveProductBtn" class="primary" type="button">Save Product</button>
+            <button id="downloadCsvBtn" class="secondary" type="button">Download CSV template</button>
+            <label class="upload-label secondary">
+              <input id="csvImportInput" type="file" accept=".csv,text/csv" />
+              Import CSV
+            </label>
+          </div>
+        </div>
+        <div class="panel">
+          <div id="productTable"></div>
+        </div>
+      </section>
+
+      <section id="page-analytics" class="page">
+        <div class="card-grid">
+          <div class="mini-card">
+            <span class="label">Today's sales</span>
+            <strong id="salesCount">0</strong>
+          </div>
+          <div class="mini-card">
+            <span class="label">Revenue</span>
+            <strong id="revenueValue">KSh 0</strong>
+          </div>
+          <div class="mini-card">
+            <span class="label">Low stock</span>
+            <strong id="lowStockValue">0</strong>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Frequently purchased products</h3>
+          <div id="frequentProducts"></div>
+        </div>
+        <div class="panel">
+          <h3>Products to reorder</h3>
+          <div id="slowProducts"></div>
+        </div>
+      </section>
+
+      <section id="page-settings" class="page">
+        <div class="panel">
+          <h3>Store Settings</h3>
+          <div class="toolbar stack">
+            <input id="storeName" placeholder="Store name" />
+            <input id="shopSlug" placeholder="Shop slug" />
+            <input id="remotePin" placeholder="Remote PIN" />
+            <input id="phone" placeholder="Store phone" />
+            <input id="address" placeholder="Store address" />
+            <button id="saveSettingsBtn" class="primary">Save</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
+
+""" ,"owner":"Kakajoes","repo":"smartduka","path":"public/index.html","sha":null}]}    
+  ]}

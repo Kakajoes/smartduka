@@ -1,153 +1,254 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Smart Duka POS</title>
-  <link rel="stylesheet" href="/styles.css" />
-</head>
-<body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand">
-        <div class="logo">D</div>
-        <div>
-          <h1>Smart Duka</h1>
-          <small>Commercial POS</small>
-        </div>
-      </div>
-      <nav>
-        <button class="nav active" data-page="pos">POS</button>
-        <button class="nav" data-page="products">Products</button>
-        <button class="nav" data-page="analytics">Intelligence</button>
-        <button class="nav" data-page="settings">Settings</button>
-        <a class="nav" href="/admin.html">Admin</a>
-        <a class="nav" href="/shop.html?shop=smartduka">Shop</a>
-      </nav>
-      <div class="status-card">
-        <span class="dot green"></span>
-        <div>
-          <strong id="currentUser">Admin</strong>
-          <small id="systemName">Smart Duka</small>
-        </div>
-      </div>
-    </aside>
+const PRODUCT_UNITS = [
+  'piece', 'packet', 'box', 'carton', 'crate', 'tray', 'bottle', 'sachet', 'bag', 'bale',
+  'pair', 'set', 'roll', 'metre', 'cm', 'mm', 'g', 'kg', 'ml', 'L', 'hour'
+];
 
-    <main class="main-panel">
-      <header class="topbar">
-        <h2 id="pageTitle">Point of Sale</h2>
-        <div class="actions">
-          <button id="logoutBtn" class="ghost">Logout</button>
-          <button id="syncBtn" class="primary">Sync</button>
-        </div>
-      </header>
+const UNIT_ALIASES = {
+  pcs: 'piece', pc: 'piece', piece: 'piece', pieces: 'piece', items: 'piece', unit: 'piece',
+  g: 'g', gram: 'g', grams: 'g',
+  kg: 'kg', kilogram: 'kg', kilograms: 'kg', kilo: 'kg',
+  ml: 'ml', milliliter: 'ml', millilitre: 'ml', milliliters: 'ml', millilitres: 'ml',
+  l: 'L', litre: 'L', liter: 'L', litres: 'L', liters: 'L',
+  packet: 'packet', packets: 'packet', pkt: 'packet', pkts: 'packet', pack: 'packet', packs: 'packet',
+  box: 'box', boxes: 'box', carton: 'carton', cartons: 'carton', crate: 'crate', crates: 'crate',
+  tray: 'tray', trays: 'tray', bottle: 'bottle', bottles: 'bottle', sachet: 'sachet', sachets: 'sachet',
+  bag: 'bag', bags: 'bag', bale: 'bale', bales: 'bale', pair: 'pair', pairs: 'pair',
+  set: 'set', sets: 'set', roll: 'roll', rolls: 'roll', metre: 'metre', meter: 'metre', metres: 'metre',
+  meters: 'metre', cm: 'cm', mm: 'mm', hour: 'hour', hours: 'hour'
+};
 
-      <section id="page-pos" class="page active">
-        <div class="panel-grid">
-          <div class="panel wide">
-            <div class="toolbar">
-              <input id="barcodeInput" placeholder="Scan barcode or type SKU" />
-              <button id="scanBtn" class="primary">Add</button>
-            </div>
-            <div id="barcodeStatus" class="muted"></div>
+const state = {
+  products: [],
+  cart: [],
+  sales: [],
+  settings: {
+    storeName: 'Smart Duka',
+    shopSlug: 'smartduka',
+    remotePin: '1234'
+  },
+  user: null,
+  remoteCredentials: {
+    slug: 'smartduka',
+    pin: '1234'
+  }
+};
 
-            <div class="product-toolbar">
-              <input id="productSearch" placeholder="Search product" />
-            </div>
+export function normalizeUnit(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  if (!value) return 'piece';
+  const normalized = UNIT_ALIASES[value] || value.replace(/[^a-z0-9]/gi, '').toLowerCase();
+  if (!normalized) return 'piece';
+  return PRODUCT_UNITS.includes(normalized) ? normalized : 'piece';
+}
 
-            <div id="productList" class="product-grid"></div>
-          </div>
+export function sanitizeProductInput(input = {}) {
+  const stock = Number(input.stock || 0);
+  const cost = Number(input.cost || 0);
+  const price = Number(input.price || 0);
+  const reorder = Number(input.reorder || 5);
+  const packSize = Number(input.packSize || 1);
 
-          <div class="panel">
-            <h3>Current Sale</h3>
-            <div id="cartList" class="cart-list"></div>
-            <div class="totals">
-              <div><span>Subtotal</span><strong id="subtotal">KSh 0</strong></div>
-              <div><span>Discount</span><input id="discount" type="number" value="0" /></div>
-              <div class="total-row"><span>Total</span><strong id="grandTotal">KSh 0</strong></div>
-            </div>
-            <label>Payment method</label>
-            <select id="paymentMethod">
-              <option value="CASH">Cash</option>
-              <option value="MPESA">M-Pesa</option>
-              <option value="CARD">Card</option>
-            </select>
-            <div id="mpesaBox" class="hidden">
-              <label>Customer phone</label>
-              <input id="customerPhone" placeholder="07XXXXXXXX" />
-              <button id="mpesaPromptBtn" class="secondary">Send M-Pesa prompt</button>
-            </div>
-            <button id="checkoutBtn" class="primary large">Complete Sale</button>
-          </div>
-        </div>
-      </section>
+  return {
+    id: String(input.id || `p-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`),
+    sku: String(input.sku || '').trim().slice(0, 80) || `SKU-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+    name: String(input.name || '').trim().replace(/[<>]/g, '').slice(0, 120),
+    category: String(input.category || 'General').trim().replace(/[<>]/g, '').slice(0, 80),
+    stock: Number.isFinite(stock) ? Math.max(0, stock) : 0,
+    cost: Number.isFinite(cost) ? Math.max(0, cost) : 0,
+    price: Number.isFinite(price) ? Math.max(0, price) : 0,
+    reorder: Number.isFinite(reorder) ? Math.max(0, reorder) : 5,
+    unit: normalizeUnit(input.unit),
+    packSize: Number.isFinite(packSize) && packSize > 0 ? packSize : 1,
+    barcode: String(input.barcode || '').trim().slice(0, 80),
+    sellOnline: !!input.sellOnline,
+    status: String(input.status || 'ACTIVE').toUpperCase().slice(0, 24) || 'ACTIVE',
+    imageData: String(input.imageData || '').slice(0, 40000)
+  };
+}
 
-      <section id="page-products" class="page">
-        <div class="panel">
-          <h3>Products</h3>
-          <div class="toolbar">
-            <input id="productFormName" placeholder="Product name" />
-            <input id="productFormSku" placeholder="SKU" />
-            <input id="productFormBarcode" placeholder="Barcode" />
-          </div>
-          <div class="toolbar">
-            <input id="productFormCost" type="number" placeholder="Cost" />
-            <input id="productFormPrice" type="number" placeholder="Price" />
-            <input id="productFormStock" type="number" placeholder="Stock" />
-          </div>
-          <div class="toolbar">
-            <input id="productFormUnit" placeholder="Unit" value="piece" />
-            <input id="productFormReorder" type="number" placeholder="Reorder" value="10" />
-            <button id="saveProductBtn" class="primary">Save Product</button>
-          </div>
-        </div>
-        <div class="panel">
-          <div id="productTable"></div>
-        </div>
-      </section>
+export function parseCsvRows(text = '') {
+  const rows = [];
+  let current = [];
+  let field = '';
+  let inQuotes = false;
 
-      <section id="page-analytics" class="page">
-        <div class="card-grid">
-          <div class="mini-card">
-            <span class="label">Today's sales</span>
-            <strong id="salesCount">0</strong>
-          </div>
-          <div class="mini-card">
-            <span class="label">Revenue</span>
-            <strong id="revenueValue">KSh 0</strong>
-          </div>
-          <div class="mini-card">
-            <span class="label">Low stock</span>
-            <strong id="lowStockValue">0</strong>
-          </div>
-        </div>
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    const next = text[i + 1];
 
-        <div class="panel">
-          <h3>Frequently purchased products</h3>
-          <div id="frequentProducts"></div>
-        </div>
-        <div class="panel">
-          <h3>Products to reorder</h3>
-          <div id="slowProducts"></div>
-        </div>
-      </section>
+    if (char === '"') {
+      if (inQuotes && next === '"') {
+        field += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
 
-      <section id="page-settings" class="page">
-        <div class="panel">
-          <h3>Store Settings</h3>
-          <div class="toolbar stack">
-            <input id="storeName" placeholder="Store name" />
-            <input id="shopSlug" placeholder="Shop slug" />
-            <input id="remotePin" placeholder="Remote PIN" />
-            <input id="phone" placeholder="Store phone" />
-            <input id="address" placeholder="Store address" />
-            <button id="saveSettingsBtn" class="primary">Save</button>
-          </div>
-        </div>
-      </section>
-    </main>
-  </div>
+    if (char === ',' && !inQuotes) {
+      current.push(field);
+      field = '';
+      continue;
+    }
 
-  <script type="module" src="/app.js"></script>
-</body>
-</html>
+    if ((char === '\n' || char === '\r') && !inQuotes) {
+      if (char === '\r' && next === '\n') i += 1;
+      current.push(field);
+      if (current.some((value) => String(value).trim() !== '')) rows.push(current);
+      current = [];
+      field = '';
+      continue;
+    }
+
+    field += char;
+  }
+
+  current.push(field);
+  if (current.some((value) => String(value).trim() !== '')) rows.push(current);
+  return rows;
+}
+
+export function normalizeCsvHeader(value = '') {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_]/g, '')
+    .replace(/^_+|_+$/g, '');
+}
+
+export function importProductsFromCsv(csvText = '') {
+  const rows = parseCsvRows(csvText);
+  if (rows.length < 2) return [];
+
+  const headers = rows[0].map(normalizeCsvHeader);
+  const indexOf = (possibleNames) => {
+    const key = possibleNames.map(normalizeCsvHeader);
+    for (let i = 0; i < key.length; i += 1) {
+      const found = headers.indexOf(key[i]);
+      if (found >= 0) return found;
+    }
+    return -1;
+  };
+
+  return rows.slice(1)
+    .filter((row) => row.some((cell) => String(cell || '').trim()))
+    .map((row) => {
+      const name = String(row[indexOf(['name', 'product', 'product_name', 'item'])] || '').trim();
+      if (!name) return null;
+
+      const sku = String(row[indexOf(['sku', 'code', 'item_code'])] || '').trim() || `SKU-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+      const category = String(row[indexOf(['category', 'department', 'dept'])] || 'General').trim() || 'General';
+      const stock = Number(row[indexOf(['stock', 'qty', 'quantity'])] || 0);
+      const cost = Number(row[indexOf(['cost', 'buying_price', 'unit_cost'])] || 0);
+      const price = Number(row[indexOf(['price', 'selling_price'])] || 0);
+      const reorder = Number(row[indexOf(['reorder', 'reorder_level'])] || 5);
+      const unit = normalizeUnit(row[indexOf(['unit', 'selling_unit', 'measure'])] || 'piece');
+      const packSize = Number(row[indexOf(['packsize', 'pack_size'])] || 1) || 1;
+      const barcode = String(row[indexOf(['barcode', 'barcode_no'])] || '').trim();
+      const sellOnline = /^(true|1|yes|y)$/i.test(String(row[indexOf(['sellonline', 'publish_online'])] || 'false'));
+
+      return sanitizeProductInput({
+        sku,
+        name,
+        category,
+        stock: Number.isFinite(stock) ? stock : 0,
+        cost: Number.isFinite(cost) ? cost : 0,
+        price: Number.isFinite(price) ? price : 0,
+        reorder: Number.isFinite(reorder) ? reorder : 5,
+        unit,
+        packSize,
+        barcode,
+        sellOnline,
+        status: 'ACTIVE'
+      });
+    })
+    .filter(Boolean);
+}
+
+export function exportProductsCsv(products = []) {
+  const header = ['SKU', 'Name', 'Category', 'Stock', 'Cost', 'Price', 'Reorder', 'Unit', 'PackSize', 'Barcode', 'SellOnline'];
+  const rows = products.map((product) => [
+    product.sku || '',
+    product.name || '',
+    product.category || 'General',
+    Number(product.stock || 0),
+    Number(product.cost || 0),
+    Number(product.price || 0),
+    Number(product.reorder || 5),
+    product.unit || 'piece',
+    Number(product.packSize || 1),
+    product.barcode || '',
+    !!product.sellOnline
+  ]);
+
+  const escape = (value) => {
+    const text = String(value ?? '');
+    return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  };
+
+  return [header, ...rows].map((row) => row.map(escape).join(',')).join('\n');
+}
+
+export function downloadCsvFile(filename, text) {
+  const blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export async function readCsvFile(file) {
+  if (!file) throw new Error('No CSV file selected');
+  if (!/\.csv$/i.test(file.name)) throw new Error('Only CSV files are supported');
+  return file.text();
+}
+
+export async function fetchJson(url, options = {}) {
+  const res = await fetch(url, {
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    ...options
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(json.error || 'Request failed');
+  return json;
+}
+
+export function money(value) {
+  return `KSh ${Number(value || 0).toLocaleString('en-KE')}`;
+}
+
+export function formatDate(ts) {
+  return new Date(ts).toLocaleString('en-KE');
+}
+
+export function renderProductCard(product, addToCart) {
+  return `
+    <div class="product-card">
+      <div class="product-thumb">🛒</div>
+      <h4>${product.name}</h4>
+      <div class="meta">${product.category || 'General'} · ${product.stock} ${normalizeUnit(product.unit)} left</div>
+      <span class="price">${money(product.price)}</span>
+      <button class="primary" data-product-id="${product.id}" data-add="1">Add</button>
+    </div>
+  `;
+}
+
+export function renderList(list, emptyText) {
+  if (!list.length) return `<div class="muted">${emptyText}</div>`;
+  return list.map((item) => `
+    <div class="list-row">
+      <span>${item.name}</span>
+      <strong>${item.qty || item.stock || item.total || ''}</strong>
+    </div>
+  `).join('');
+}
+
+export default state;
+
+export { PRODUCT_UNITS, UNIT_ALIASES };
+""" ,"owner":"Kakajoes","repo":"smartduka","path":"public/app.js","sha":null}]}    
+  ]}
