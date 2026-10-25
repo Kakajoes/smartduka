@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Smart Duka Shop</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="shop-body">
+  <div class="shop-header">
+    <h1 id="shopTitle">Smart Duka</h1>
+    <button class="primary" onclick="openCart()">Cart <span id="cartCounter">0</span></button>
+  </div>
+  <div class="shop-search">
+    <input id="shopSearch" placeholder="Search products" />
+  </div>
+  <div id="shopProducts" class="shop-products"></div>
+
+  <aside id="cartDrawer" class="drawer hidden">
+    <div class="drawer-head">
+      <h3>Your cart</h3>
+      <button class="ghost" onclick="closeCart()">Close</button>
+    </div>
+    <div id="drawerItems"></div>
+    <div class="drawer-footer">
+      <div class="total-line"><span>Total</span><strong id="shopTotal">KSh 0</strong></div>
+      <input id="customerName" placeholder="Your name" />
+      <input id="customerPhone" placeholder="Phone" />
+      <button id="checkoutShopBtn" class="primary large">Place Order</button>
+    </div>
+  </aside>
+
+  <script type="module" src="/shop.js"></script>
+</body>
+</html>

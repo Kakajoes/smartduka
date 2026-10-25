@@ -1,0 +1,514 @@
+import express from 'express';
+import cors from 'cors';
+import dotenv from 'dotenv';
+import { readFile, writeFile, mkdir, access } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { v4 as uuid } from 'uuid';
+
+dotenv.config();
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const DATA_DIR = path.join(__dirname, 'data');
+const STORE_PATH = path.join(DATA_DIR, 'store.json');
+const PORT = Number(process.env.PORT || 3000);
+const app = express();
+
+app.use(cors());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'public')));
+
+function hashPassword(password) {
+  return crypto.pbkdf2Sync(password, 'smartduka-salt', 100000, 64, 'sha512').toString('hex');
+}
+
+function getToday() {
+  return new Date().toISOString();
+}
+
+async function ensureStore() {
+  await mkdir(DATA_DIR, { recursive: true });
+  try {
+    await access(STORE_PATH, constants.F_OK);
+  } catch {
+    const seed = {
+      users: [
+        { id: 'admin-1', name: 'Administrator', username: 'admin', password: hashPassword('Admin123!'), role: 'ADMIN', status: 'ACTIVE' },
+        { id: 'cashier-1', name: 'Cashier', username: 'cashier', password: hashPassword('Cashier123!'), role: 'CASHIER', status: 'ACTIVE' }
+      ],
+      settings: {
+        storeName: 'Smart Duka',
+        shopSlug: 'smartduka',
+        remotePin: '1234',
+        phone: '',
+        address: '',
+        mpesaShortcode: '',
+        mpesaEnv: 'sandbox',
+        mpesaTransactionType: 'CustomerPayBillOnline'
+      },
+      products: [
+        { id: 'p-1', sku: 'SKU001', name: 'Maize Flour 2kg', category: 'Groceries', stock: 50, cost: 180, price: 260, reorder: 12, unit: 'packet', barcode: '1001', sellOnline: true, status: 'ACTIVE', createdAt: getToday() },
+        { id: 'p-2', sku: 'SKU002', name: 'Rice 5kg', category: 'Groceries', stock: 40, cost: 400, price: 620, reorder: 8, unit: 'bag', barcode: '1002', sellOnline: true, status: 'ACTIVE', createdAt: getToday() },
+        { id: 'p-3', sku: 'SKU003', name: 'Cooking Oil 1L', category: 'Groceries', stock: 60, cost: 220, price: 330, reorder: 15, unit: 'bottle', barcode: '1003', sellOnline: true, status: 'ACTIVE', createdAt: getToday() },
+        { id: 'p-4', sku: 'SKU004', name: 'Soap Bar', category: 'Household', stock: 80, cost: 55, price: 90, reorder: 20, unit: 'piece', barcode: '1004', sellOnline: true, status: 'ACTIVE', createdAt: getToday() }
+      ],
+      customers: [],
+      sales: [],
+      orders: [],
+      shifts: [],
+      stockMovements: [],
+      audit: [],
+      mpesaCallbacks: [],
+      remoteOrders: [],
+      catalog: {
+        slug: 'smartduka',
+        products: [],
+        updatedAt: null
+      }
+    };
+    await writeFile(STORE_PATH, JSON.stringify(seed, null, 2));
+  }
+}
+
+async function loadStore() {
+  await ensureStore();
+  const raw = await readFile(STORE_PATH, 'utf8');
+  return JSON.parse(raw);
+}
+
+async function saveStore(data) {
+  await writeFile(STORE_PATH, JSON.stringify(data, null, 2));
+}
+
+function buildCatalog(db) {
+  const products = (db.products || []).filter((p) => p.status === 'ACTIVE' && p.sellOnline).map((p) => ({
+    id: p.id,
+    name: p.name,
+    sku: p.sku,
+    category: p.category,
+    price: Number(p.price || 0),
+    stock: Number(p.stock || 0),
+    unit: p.unit || 'piece',
+    imageData: p.imageData || '',
+    barcode: p.barcode || '',
+    reorder: Number(p.reorder || 0)
+  }));
+  return { slug: db.settings.shopSlug, shopName: db.settings.storeName, systemName: db.settings.storeName, phone: db.settings.phone || '', updatedAt: Date.now(), products };
+}
+
+function addAudit(db, action, entity, details, user = 'system') {
+  db.audit.unshift({ id: uuid(), action, entity, details, user, time: Date.now() });
+}
+
+function getProductVelocity(db, days = 30) {
+  const cutoff = Date.now() - days * 86400000;
+  const map = new Map();
+
+  for (const product of db.products) {
+    map.set(product.id, { id: product.id, name: product.name, qty: 0, revenue: 0, stock: Number(product.stock || 0), category: product.category || 'General' });
+  }
+
+  for (const sale of db.sales) {
+    if (!sale || Number(sale.time) < cutoff) continue;
+    for (const item of sale.items || []) {
+      const product = map.get(item.productId || item.id);
+      if (!product) continue;
+      product.qty += Number(item.qty || 0);
+      product.revenue += Number(item.qty || 0) * Number(item.price || 0);
+    }
+  }
+
+  const list = [...map.values()].sort((a, b) => b.qty - a.qty);
+  return {
+    frequent: list.slice(0, 5),
+    slow: [...list].sort((a, b) => a.qty - b.qty).slice(0, 5),
+    total: list
+  };
+}
+
+function sendJson(res, data, status = 200) {
+  res.status(status).json(data);
+}
+
+app.get('/api/health', async (_, res) => {
+  const data = await loadStore();
+  sendJson(res, { ok: true, shop: data.settings.storeName || 'Smart Duka' });
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  const { username, password } = req.body || {};
+  const db = await loadStore();
+  const user = (db.users || []).find((u) => u.username.toLowerCase() === String(username || '').toLowerCase());
+  if (!user) return sendJson(res, { error: 'Invalid username or password' }, 401);
+
+  const provided = hashPassword(String(password || ''));
+  if (user.password !== provided) return sendJson(res, { error: 'Invalid username or password' }, 401);
+
+  addAudit(db, 'LOGIN', 'user', `User ${user.username} signed in`, user.username);
+  await saveStore(db);
+
+  sendJson(res, { ok: true, user: { id: user.id, name: user.name, username: user.username, role: user.role, status: user.status } });
+});
+
+app.get('/api/products', async (_, res) => {
+  const db = await loadStore();
+  sendJson(res, { ok: true, products: db.products || [] });
+});
+
+app.post('/api/products', async (req, res) => {
+  const db = await loadStore();
+  const p = req.body || {};
+  if (!p.name) return sendJson(res, { error: 'Product name required' }, 400);
+  const product = {
+    id: p.id || `p-${Date.now()}`,
+    sku: p.sku || `SKU-${Math.random().toString(36).slice(2, 8).toUpperCase()}`,
+    name: p.name,
+    category: p.category || 'General',
+    stock: Number(p.stock || 0),
+    cost: Number(p.cost || 0),
+    price: Number(p.price || 0),
+    reorder: Number(p.reorder || 5),
+    unit: p.unit || 'piece',
+    barcode: p.barcode || '',
+    sellOnline: !!p.sellOnline,
+    status: 'ACTIVE',
+    imageData: p.imageData || '',
+    createdAt: getToday()
+  };
+
+  const idx = (db.products || []).findIndex((row) => row.id === product.id);
+  if (idx >= 0) db.products[idx] = product;
+  else db.products.push(product);
+
+  addAudit(db, 'PRODUCT_SAVED', 'product', product.name, 'admin');
+  db.catalog = buildCatalog(db);
+  await saveStore(db);
+  sendJson(res, { ok: true, product });
+});
+
+app.post('/api/stock/adjust', async (req, res) => {
+  const { productId, delta, reason = 'Adjustment' } = req.body || {};
+  const db = await loadStore();
+  const product = (db.products || []).find((p) => p.id === productId);
+  if (!product) return sendJson(res, { error: 'Product not found' }, 404);
+  const prev = Number(product.stock || 0);
+  product.stock = Math.max(0, prev + Number(delta || 0));
+  db.stockMovements.unshift({
+    id: uuid(),
+    productId, name: product.name,
+    delta: Number(delta || 0),
+    before: prev,
+    after: product.stock,
+    reason,
+    time: Date.now()
+  });
+  addAudit(db, 'STOCK_ADJUSTED', 'stock', `${product.name}: ${reason}`, 'admin');
+  await saveStore(db);
+  sendJson(res, { ok: true, product });
+});
+
+app.post('/api/sales', async (req, res) => {
+  const db = await loadStore();
+  const { items = [], cashier = 'Cashier', paymentMethod = 'CASH', customerName = '', customerPhone = '' } = req.body || {};
+
+  if (!Array.isArray(items) || !items.length) return sendJson(res, { error: 'No sale items' }, 400);
+
+  let total = 0;
+  const saleItems = [];
+
+  for (const line of items) {
+    const product = (db.products || []).find((p) => p.id === line.productId || p.barcode === String(line.barcode || ''));
+    if (!product) return sendJson(res, { error: `Product not found: ${line.productId || line.barcode || ''}` }, 400);
+    const qty = Number(line.qty || 0);
+    if (qty <= 0) return sendJson(res, { error: `Invalid quantity for ${product.name}` }, 400);
+    if (Number(product.stock || 0) < qty) return sendJson(res, { error: `${product.name} is out of stock` }, 409);
+    product.stock = Number(product.stock || 0) - qty;
+    total += Number(product.price || 0) * qty;
+    saleItems.push({
+      productId: product.id,
+      id: product.id,
+      name: product.name,
+      qty,
+      price: Number(product.price || 0),
+      cost: Number(product.cost || 0),
+      unit: product.unit || 'piece'
+    });
+  }
+
+  const sale = {
+    id: uuid(),
+    number: `SD-${Date.now().toString().slice(-7)}`,
+    time: Date.now(),
+    cashier,
+    paymentMethod,
+    customerName,
+    customerPhone,
+    status: 'PAID',
+    total,
+    items: saleItems,
+    profit: saleItems.reduce((sum, i) => sum + (Number(i.price || 0) - Number(i.cost || 0)) * Number(i.qty || 0), 0)
+  };
+
+  db.sales.unshift(sale);
+  addAudit(db, 'SALE_CREATED', 'sale', sale.number, cashier);
+  db.catalog = buildCatalog(db);
+  await saveStore(db);
+  sendJson(res, { ok: true, sale });
+});
+
+app.get('/api/analytics', async (_, res) => {
+  const db = await loadStore();
+  const velocity = getProductVelocity(db, 30);
+  const lowStock = (db.products || []).filter((p) => Number(p.stock || 0) <= Number(p.reorder || 0));
+  const salesToday = (db.sales || []).filter((s) => {
+    const d = new Date(Number(s.time));
+    const now = new Date();
+    return d.toDateString() === now.toDateString();
+  });
+  const totalRevenue = salesToday.reduce((sum, s) => sum + Number(s.total || 0), 0);
+  sendJson(res, {
+    ok: true,
+    analytics: {
+      lowStock,
+      frequentProducts: velocity.frequent,
+      slowProducts: velocity.slow,
+      totalRevenue,
+      todaySales: salesToday.length
+    }
+  });
+});
+
+app.get('/api/admin/snapshot', async (req, res) => {
+  const { slug, pin } = req.query || {};
+  const db = await loadStore();
+  if (!slug || !pin) return sendJson(res, { error: 'shop and pin required' }, 400);
+  if (String(db.settings.shopSlug) !== String(slug) || String(db.settings.remotePin) !== String(pin)) {
+    return sendJson(res, { error: 'Invalid remote credentials' }, 403);
+  }
+
+  sendJson(res, {
+    ok: true,
+    shop: db.settings.storeName,
+    products: db.products,
+    sales: db.sales.slice(0, 100),
+    audits: db.audit.slice(0, 50),
+    analytics: getProductVelocity(db, 30)
+  });
+});
+
+app.get('/api/catalog/:slug', async (req, res) => {
+  const db = await loadStore();
+  const slug = String(req.params.slug || '').toLowerCase();
+  if (!slug) return sendJson(res, { error: 'shop required' }, 400);
+  const settings = db.settings || {};
+  if (String(settings.shopSlug || '').toLowerCase() !== slug) return sendJson(res, { error: 'Shop not found' }, 404);
+  const catalog = buildCatalog(db);
+  sendJson(res, { ok: true, catalog });
+});
+
+app.post('/api/orders', async (req, res) => {
+  const db = await loadStore();
+  const { slug, customer, items, paymentMethod = 'STK', location } = req.body || {};
+  const safeSlug = String(slug || '').toLowerCase();
+  if (safeSlug !== String(db.settings.shopSlug || '').toLowerCase()) return sendJson(res, { error: 'Invalid shop slug' }, 400);
+  if (!Array.isArray(items) || !items.length) return sendJson(res, { error: 'Cart is empty' }, 400);
+
+  let total = 0;
+  const mappedItems = [];
+  for (const item of items) {
+    const product = (db.products || []).find((p) => p.id === item.id);
+    if (!product) return sendJson(res, { error: `Bad product: ${item.id}` }, 400);
+    const qty = Number(item.qty || 0);
+    if (qty <= 0) return sendJson(res, { error: 'Invalid quantity' }, 400);
+    if (Number(product.stock || 0) < qty) return sendJson(res, { error: `${product.name} does not have enough stock` }, 409);
+    total += Number(product.price || 0) * qty;
+    mappedItems.push({ productId: product.id, name: product.name, qty, price: Number(product.price || 0) });
+  }
+
+  const order = {
+    id: uuid(),
+    slug: safeSlug,
+    customer: customer || { name: 'Guest', phone: '' },
+    location: location || null,
+    items: mappedItems,
+    total,
+    paymentMethod,
+    status: 'PENDING',
+    createdAt: Date.now()
+  };
+
+  db.orders.unshift(order);
+  addAudit(db, 'ONLINE_ORDER', 'order', `${order.id} / ${customer?.name || 'Guest'}`, 'shop');
+  await saveStore(db);
+  sendJson(res, { ok: true, order });
+});
+
+app.post('/api/mpesa/stk', async (req, res) => {
+  const env = process.env.MPESA_ENV || 'sandbox';
+  const consumerKey = process.env.MPESA_CONSUMER_KEY || '';
+  const consumerSecret = process.env.MPESA_CONSUMER_SECRET || '';
+  const shortcode = process.env.MPESA_SHORTCODE || '';
+  const passkey = process.env.MPESA_PASSKEY || '';
+  if (!consumerKey || !consumerSecret || !shortcode || !passkey) {
+    return sendJson(res, { error: 'Daraja credentials not configured on this server' }, 503);
+  }
+
+  const { phone, amount, saleId, slug = 'smartduka' } = req.body || {};
+  if (!phone || !amount) return sendJson(res, { error: 'Phone and amount are required' }, 400);
+
+  const base = env === 'production' ? 'https://api.safaricom.co.ke' : 'https://sandbox.safaricom.co.ke';
+  const timestamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*/, '').slice(0, 14);
+  const password = Buffer.from(`${shortcode}${passkey}${timestamp}`).toString('base64');
+  const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString('base64');
+
+  try {
+    const tokenRes = await fetch(`${base}/oauth/v1/generate?grant_type=client_credentials`, {
+      headers: { Authorization: `Basic ${auth}` }
+    });
+    const tokenJson = await tokenRes.json();
+    if (!tokenJson.access_token) throw new Error(tokenJson.error_description || 'Failed to get M-Pesa token');
+
+    const requestBody = {
+      BusinessShortCode: shortcode,
+      Password: password,
+      Timestamp: timestamp,
+      TransactionType: process.env.MPESA_TRANSACTION_TYPE || 'CustomerPayBillOnline',
+      Amount: Number(amount),
+      PartyA: phone.replace(/\D/g, ''),
+      PartyB: shortcode,
+      PhoneNumber: phone.replace(/\D/g, ''),
+      CallBackURL: `${process.env.APP_BASE_URL || 'http://localhost:3000'}/api/mpesa/callback?token=${process.env.MPESA_CALLBACK_TOKEN || 'demo'}`,
+      AccountReference: String(slug || 'smartduka').slice(0, 12),
+      TransactionDesc: 'Smart Duka sale'
+    };
+
+    const stkRes = await fetch(`${base}/mpesa/stkpush/v1/processrequest`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${tokenJson.access_token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    const stkJson = await stkRes.json();
+    if (!stkJson.CheckoutRequestID) {
+      return sendJson(res, { error: stkJson.errorMessage || 'STK request failed', details: stkJson }, 400);
+    }
+
+    const db = await loadStore();
+    db.mpesaCallbacks.push({
+      id: uuid(),
+      checkoutRequestId: stkJson.CheckoutRequestID,
+      saleId: saleId || null,
+      slug,
+      phone,
+      amount: Number(amount),
+      status: 'PENDING',
+      createdAt: Date.now()
+    });
+    await saveStore(db);
+
+    sendJson(res, { ok: true, checkoutRequestId: stkJson.CheckoutRequestID, customerMessage: stkJson.CustomerMessage || 'Check your phone' });
+  } catch (error) {
+    sendJson(res, { error: error.message || 'M-Pesa request failed' }, 500);
+  }
+});
+
+app.post('/api/mpesa/callback', async (req, res) => {
+  const token = String(req.query.token || '');
+  const expected = String(process.env.MPESA_CALLBACK_TOKEN || 'demo');
+  if (expected && token !== expected) {
+    return sendJson(res, { ResultCode: 1, ResultDesc: 'Rejected: invalid callback token' }, 403);
+  }
+
+  const body = req.body || {};
+  const stk = body.Body?.stkCallback || body.stkCallback || {};
+  const checkoutRequestId = String(stk.CheckoutRequestID || body.CheckoutRequestID || '');
+  const resultCode = String(stk.ResultCode ?? body.ResultCode ?? '');
+  const receipt = String(stk.CallbackMetadata?.Item?.find((i) => /receipt/i.test(i.Name || ''))?.Value || '');
+
+  const db = await loadStore();
+  const callback = (db.mpesaCallbacks || []).find((c) => c.checkoutRequestId === checkoutRequestId);
+  if (callback) {
+    callback.status = resultCode === '0' ? 'PAID' : 'FAILED';
+    callback.resultCode = resultCode;
+    callback.receipt = receipt;
+    callback.updatedAt = Date.now();
+  }
+
+  if (callback?.saleId) {
+    const order = (db.orders || []).find((o) => o.id === callback.saleId || o.id === callback.saleId);
+    if (order) {
+      order.status = resultCode === '0' ? 'PAID' : 'FAILED';
+      order.mpesaReceipt = receipt || order.mpesaReceipt || '';
+      order.callbackResultCode = resultCode;
+    }
+  }
+
+  addAudit(db, 'MPESA_CALLBACK', 'payment', `Checkout ${checkoutRequestId} -> ${resultCode}`, 'system');
+  await saveStore(db);
+
+  sendJson(res, { ResultCode: 0, ResultDesc: 'Accepted' });
+});
+
+app.get('/api/mpesa/status/:checkoutRequestId', async (req, res) => {
+  const { checkoutRequestId } = req.params;
+  const db = await loadStore();
+  const callback = (db.mpesaCallbacks || []).find((c) => c.checkoutRequestId === checkoutRequestId);
+  if (!callback) return sendJson(res, { ok: false, status: 'PENDING' }, 404);
+  sendJson(res, {
+    ok: true,
+    status: callback.status || 'PENDING',
+    paid: callback.status === 'PAID',
+    receipt: callback.receipt || '',
+    resultCode: callback.resultCode || '',
+    checkoutRequestId
+  });
+});
+
+app.post('/api/settings', async (req, res) => {
+  const db = await loadStore();
+  const body = req.body || {};
+  db.settings = {
+    ...db.settings,
+    storeName: body.storeName || db.settings.storeName,
+    shopSlug: String(body.shopSlug || db.settings.shopSlug).toLowerCase().replace(/[^a-z0-9-]/g, '-'),
+    remotePin: String(body.remotePin || db.settings.remotePin || '1234'),
+    phone: body.phone || db.settings.phone,
+    address: body.address || db.settings.address,
+    mpesaShortcode: body.mpesaShortcode || db.settings.mpesaShortcode,
+    mpesaEnv: body.mpesaEnv || db.settings.mpesaEnv,
+    mpesaTransactionType: body.mpesaTransactionType || db.settings.mpesaTransactionType
+  };
+  db.catalog = buildCatalog(db);
+  addAudit(db, 'SETTINGS_UPDATED', 'settings', 'Settings updated', 'admin');
+  await saveStore(db);
+  sendJson(res, { ok: true, settings: db.settings });
+});
+
+app.get('/api/bootstrap', async (_, res) => {
+  const db = await loadStore();
+  sendJson(res, {
+    ok: true,
+    settings: db.settings,
+    users: db.users,
+    products: db.products,
+    sales: db.sales,
+    analytics: getProductVelocity(db, 30)
+  });
+});
+
+app.get('*', (_, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+async function start() {
+  await ensureStore();
+  app.listen(PORT, () => console.log(`Smart Duka server running on http://localhost:${PORT}`));
+}
+
+start();

@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Smart Duka POS</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="logo">D</div>
+        <div>
+          <h1>Smart Duka</h1>
+          <small>Commercial POS</small>
+        </div>
+      </div>
+      <nav>
+        <button class="nav active" data-page="pos">POS</button>
+        <button class="nav" data-page="products">Products</button>
+        <button class="nav" data-page="analytics">Intelligence</button>
+        <button class="nav" data-page="settings">Settings</button>
+        <a class="nav" href="/admin.html">Admin</a>
+        <a class="nav" href="/shop.html?shop=smartduka">Shop</a>
+      </nav>
+      <div class="status-card">
+        <span class="dot green"></span>
+        <div>
+          <strong id="currentUser">Admin</strong>
+          <small id="systemName">Smart Duka</small>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main-panel">
+      <header class="topbar">
+        <h2 id="pageTitle">Point of Sale</h2>
+        <div class="actions">
+          <button id="logoutBtn" class="ghost">Logout</button>
+          <button id="syncBtn" class="primary">Sync</button>
+        </div>
+      </header>
+
+      <section id="page-pos" class="page active">
+        <div class="panel-grid">
+          <div class="panel wide">
+            <div class="toolbar">
+              <input id="barcodeInput" placeholder="Scan barcode or type SKU" />
+              <button id="scanBtn" class="primary">Add</button>
+            </div>
+            <div id="barcodeStatus" class="muted"></div>
+
+            <div class="product-toolbar">
+              <input id="productSearch" placeholder="Search product" />
+            </div>
+
+            <div id="productList" class="product-grid"></div>
+          </div>
+
+          <div class="panel">
+            <h3>Current Sale</h3>
+            <div id="cartList" class="cart-list"></div>
+            <div class="totals">
+              <div><span>Subtotal</span><strong id="subtotal">KSh 0</strong></div>
+              <div><span>Discount</span><input id="discount" type="number" value="0" /></div>
+              <div class="total-row"><span>Total</span><strong id="grandTotal">KSh 0</strong></div>
+            </div>
+            <label>Payment method</label>
+            <select id="paymentMethod">
+              <option value="CASH">Cash</option>
+              <option value="MPESA">M-Pesa</option>
+              <option value="CARD">Card</option>
+            </select>
+            <div id="mpesaBox" class="hidden">
+              <label>Customer phone</label>
+              <input id="customerPhone" placeholder="07XXXXXXXX" />
+              <button id="mpesaPromptBtn" class="secondary">Send M-Pesa prompt</button>
+            </div>
+            <button id="checkoutBtn" class="primary large">Complete Sale</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="page-products" class="page">
+        <div class="panel">
+          <h3>Products</h3>
+          <div class="toolbar">
+            <input id="productFormName" placeholder="Product name" />
+            <input id="productFormSku" placeholder="SKU" />
+            <input id="productFormBarcode" placeholder="Barcode" />
+          </div>
+          <div class="toolbar">
+            <input id="productFormCost" type="number" placeholder="Cost" />
+            <input id="productFormPrice" type="number" placeholder="Price" />
+            <input id="productFormStock" type="number" placeholder="Stock" />
+          </div>
+          <div class="toolbar">
+            <input id="productFormUnit" placeholder="Unit" value="piece" />
+            <input id="productFormReorder" type="number" placeholder="Reorder" value="10" />
+            <button id="saveProductBtn" class="primary">Save Product</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div id="productTable"></div>
+        </div>
+      </section>
+
+      <section id="page-analytics" class="page">
+        <div class="card-grid">
+          <div class="mini-card">
+            <span class="label">Today's sales</span>
+            <strong id="salesCount">0</strong>
+          </div>
+          <div class="mini-card">
+            <span class="label">Revenue</span>
+            <strong id="revenueValue">KSh 0</strong>
+          </div>
+          <div class="mini-card">
+            <span class="label">Low stock</span>
+            <strong id="lowStockValue">0</strong>
+          </div>
+        </div>
+
+        <div class="panel">
+          <h3>Frequently purchased products</h3>
+          <div id="frequentProducts"></div>
+        </div>
+        <div class="panel">
+          <h3>Products to reorder</h3>
+          <div id="slowProducts"></div>
+        </div>
+      </section>
+
+      <section id="page-settings" class="page">
+        <div class="panel">
+          <h3>Store Settings</h3>
+          <div class="toolbar stack">
+            <input id="storeName" placeholder="Store name" />
+            <input id="shopSlug" placeholder="Shop slug" />
+            <input id="remotePin" placeholder="Remote PIN" />
+            <input id="phone" placeholder="Store phone" />
+            <input id="address" placeholder="Store address" />
+            <button id="saveSettingsBtn" class="primary">Save</button>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
